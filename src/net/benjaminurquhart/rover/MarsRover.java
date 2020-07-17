@@ -97,6 +97,8 @@ public class MarsRover {
 				"mus_f_noise",
 				"mus_f_6s_6",
 				"mus_f_noise",
+				"mus_f_part1",
+				"mus_f_noise",
 				"mus_f_finale_1_l",
 				"mus_f_finale_2",
 				"mus_f_finale_3"
@@ -724,9 +726,9 @@ class Engine {
 		}
 	}
 	
-	public static boolean ROTATE = true;
+	public static boolean ROTATE = false;
 	
-	public static final double ELITE_CUTOFF = .5;
+	public static final double ELITE_CUTOFF = .25;
 	public static final double GRAVITY = 3.72;
 	
 	public static final int POPULATION_SIZE = 30;
@@ -758,11 +760,13 @@ class Engine {
 		
 		this.population = new Rover[POPULATION_SIZE];
 		
-		Direction dir = start.diff(end);
-		
-		while(dir != Direction.SOUTHWEST && dir != Direction.WEST) {
-			dir = dir.rotate();
-			rotation++;
+		if(ROTATE) {
+			Direction dir = start.diff(end);
+			
+			while(dir != Direction.SOUTHWEST && dir != Direction.WEST) {
+				dir = dir.rotate();
+				rotation++;
+			}
 		}
 	}
 	

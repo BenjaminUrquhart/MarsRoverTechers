@@ -1,0 +1,29 @@
+plugins {
+    id 'java'
+    id 'application'
+    id "com.github.johnrengelman.shadow" version "5.2.0"
+}
+
+sourceSets {
+	main.java.srcDirs = ['src']
+	main.resources.srcDirs = ['src']
+}
+
+repositories {
+	maven { url = 'https://oss.sonatype.org/content/repositories/snapshots' }
+	maven { url = 'https://oss.sonatype.org/content/repositories/central' }
+	maven { url 'https://jitpack.io' }
+	mavenLocal()
+	jcenter()
+}
+
+dependencies {
+	implementation('com.github.BenjaminUrquhart:GameMaker-Parser:master-SNAPSHOT')
+	implementation('com.googlecode.soundlibs:tritonus-share:0.3.7-2')
+	implementation('com.googlecode.soundlibs:vorbisspi:1.0.3-1')
+}
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+mainClassName='net.benjaminurquhart.rover.MarsRover'

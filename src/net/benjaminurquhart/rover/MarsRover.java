@@ -28,6 +28,7 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
@@ -51,7 +52,7 @@ public class MarsRover {
 		
 		TRACKS.put("Another Medium", new String[] {"mus_anothermedium"});
 		TRACKS.put("Metal Crusher", new String[] {"mus_mettatonbattle"});
-		TRACKS.put("Bonetrousle", new String[] {"mus_papyrusbattle"});
+		TRACKS.put("Bonetrousle", new String[] {"mus_papyrusboss"});
 		TRACKS.put("Tem Village", new String[] {"mus_temvillage"});
 		TRACKS.put("Waterfall", new String[] {"mus_waterfall"});
 		TRACKS.put("Dummy!", new String[] {"mus_dummybattle"});
@@ -60,8 +61,8 @@ public class MarsRover {
 		
 		
 		TRACKS.put("Battle Against a True Hero", new String[] {"mus_x_undyne"});
-		TRACKS.put("Spear of Justice", new String[] {"mus_undynebattle"});
 		TRACKS.put("Death by Glamour", new String[] {"mus_mettaton_ex"});
+		TRACKS.put("Spear of Justice", new String[] {"mus_undyneboss"});
 		TRACKS.put("It's Showtime!", new String[] {"mus_mtgameshow"});
 		TRACKS.put("Spider Dance",   new String[] {"mus_spider"});
 		TRACKS.put("Thundersnail", new String[]  {"mus_race"});
@@ -287,39 +288,11 @@ class Rover implements Comparable<Rover> {
 	
 	public static class Gene {
 		
-		public static final long SEED = System.currentTimeMillis();
+		public static long SEED = System.currentTimeMillis();
 		public static final Random RANDOM = new Random(SEED);
 		
-		public static final double MUTATION_CHANCE = .05;
+		public static final double MUTATION_CHANCE = .075;
 		
-		/*
-		public static boolean UNSKEW_DIRECTIONS = false;
-		
-		private static final Direction[] DIRECTIONS;
-		
-		static {
-			
-			
-			if(UNSKEW_DIRECTIONS) {
-				DIRECTIONS = Direction.values();
-			}
-			else {
-				DIRECTIONS = new Direction[] {
-					Direction.NORTHEAST,
-					Direction.NORTHWEST,
-					Direction.SOUTHEAST,
-					Direction.SOUTHWEST,
-					Direction.NORTH,
-					Direction.SOUTH,
-					Direction.EAST,
-					Direction.WEST
-				};
-			}
-		}
-		
-		public static Gene generate() {
-			return new Gene(DIRECTIONS[RANDOM.nextInt(8)]);
-		}*/
 		public static Gene generate() {
 			return new Gene(Direction.values()[RANDOM.nextInt(8)]);
 		}
@@ -339,28 +312,7 @@ class Rover implements Comparable<Rover> {
 			double rand = RANDOM.nextDouble();
 			
 			int pos1 = direction.ordinal(), pos2 = other.direction.ordinal(), rot = 0;
-			/*
-			if(UNSKEW_DIRECTIONS) {
-				
-				int diff = Math.abs(pos1-pos2);
-				
-				if(diff > 4) {
-					rot = 8-Math.max(pos1, pos2);
-					pos1+=rot;
-					pos2+=rot;
-					
-					pos1&=7;
-					pos2&=7;
-				}
-			}
-			*/
-			//int ord = pos1 == pos2 ? (int)Math.round(rand*pos2+(1-rand)*pos1) : pos1^pos2;
 			int ord = (int)Math.round(rand*pos2+(1-rand)*pos1)-rot;
-			/*
-			if(UNSKEW_DIRECTIONS && ord < 0) {
-				ord+=8;
-			}
-			return new Gene(DIRECTIONS[ord]).attemptMutation();*/
 			return new Gene(Direction.values()[ord]).attemptMutation();
 		}
 	}
@@ -509,6 +461,8 @@ class Engine {
 		
 		private final ExecutorService renderThread = Executors.newSingleThreadExecutor();
 		
+		private final AtomicBoolean wroteSolution;
+		
 		private Future<BufferedImage> future;
 		private BufferedImage map;
 		private Engine engine;
@@ -517,7 +471,10 @@ class Engine {
 		
 		private double min, max;
 		
+		private int staleIn, regenIn;
+		
 		protected Display(Engine engine, JFrame frame) {
+			this.wroteSolution = new AtomicBoolean(false);
 			this.engine = engine;
 			this.frame = frame;
 			
@@ -579,9 +536,50 @@ class Engine {
 						graphics.setColor(Color.BLACK);
 						graphics.drawString(rover.toString(), 650+offsetX, y+=15);
 					}
-					graphics.drawString(String.format("Score: %f", engine.population[0] == null ? 0 : engine.population[0].getScore()), 10, 20);
+					graphics.drawString(String.format(
+							"Score: %4.5f (Stale in %04d, Regen in %04d)", 
+							engine.population[0] == null ? 0 : engine.population[0].getScore(),
+							staleIn,
+							regenIn
+					), 10, 20);
 				}
 				else {
+					if(!wroteSolution.getAndSet(true)) {
+						try {
+							BufferedImage out = new BufferedImage(1025, 1025, BufferedImage.TYPE_INT_ARGB);
+							Graphics2D outGraphics = out.createGraphics();
+							original = outGraphics.getTransform();
+							if(engine.rotation != 0) {
+								outGraphics.setTransform(AffineTransform.getQuadrantRotateInstance(engine.rotation, 512, 512));
+							}
+							outGraphics.drawImage(this.map, 0, 0, null);
+							outGraphics.setTransform(original);
+							
+							this.drawRover(outGraphics, winner, 0, 0);
+							
+							outGraphics.setColor(Color.GREEN);
+							outGraphics.drawString(String.format("Score: %f", winner.getScore()), 10, 20);
+							
+							Direction top = Direction.NORTH;
+							for(int i = 0; i < 4-engine.rotation; i++) {
+								top = top.rotate();
+							}
+							outGraphics.setColor(Color.BLACK);
+							outGraphics.drawString(
+									top.name(), 
+									512-outGraphics.getFontMetrics().charsWidth(top.name().toCharArray(), 0, top.name().length())/2, 
+									20
+							);
+							
+							outGraphics.dispose();
+							
+							ImageIO.write(out, "png", new File("solution_map.png"));
+						}
+						catch(Exception e) {
+							e.printStackTrace();
+						}
+					}
+					
 					this.drawRover(graphics, winner, offsetX, offsetY);
 					
 					graphics.setColor(Color.GREEN);
@@ -726,11 +724,16 @@ class Engine {
 		}
 	}
 	
+	public static boolean GET_NEW_SEED = true;
 	public static boolean ROTATE = false;
 	
+	public static final double STAND_DEV_DIFF = 10;
 	public static final double ELITE_CUTOFF = .25;
 	public static final double GRAVITY = 3.72;
 	
+	public static final int POPULATION_STALE_CUTOFF_TURNS = 500;
+	public static final int POPULATION_REGEN_TURNS = 1000;
+	public static final int REGENS_UNTIL_ROTATION = 5;
 	public static final int POPULATION_SIZE = 30;
 	public static final int NUM_GENES = 10000;
 	
@@ -824,23 +827,28 @@ class Engine {
 			}
 			frame.setBackground(Color.ORANGE);
 		}
-		int rotBack;
+		int rotBack = 0;
 		if(rotation != 0) {
-			System.err.println("Rotating...");
-			rotBack = this.rotate();
-		}
-		else {
-			rotBack = 0;
+			rotBack = this.rotate(rotation);
 		}
 		System.err.println("Starting GA...");
-		for(int i = 0; i < POPULATION_SIZE; i++) {
-			population[i] = new Rover(this, NUM_GENES);
-		}
+		System.err.println("Seed: " + Rover.Gene.SEED);
+		this.regenerate();
+		
 		final int REAL_ELITE = 2*(NUM_ELITE/2);
 		
 		List<Rover> winners = new ArrayList<>();
 		Rover[] children, tmp;
 		Rover a, b;
+		
+		double chosenStandardDev = -1, standardDev;
+		double variance;
+		
+		int turnsUntilStale = POPULATION_STALE_CUTOFF_TURNS;
+		int turnsUntilRegen = POPULATION_REGEN_TURNS;
+		
+		int regens = 0;
+		
 		while(true) {
 			while(locked);
 			locked = true;
@@ -868,10 +876,11 @@ class Engine {
 				winners.clear();
 				System.gc();
 				
+				final int finalRotBack = rotBack;
 				return Arrays.stream(winner.getGenes())
 							 .map(Rover.Gene::getDirection)
 							 .map(dir -> {
-								for(int i = 0; i < rotBack; i++) {
+								for(int i = 0; i < finalRotBack; i++) {
 									dir = dir.rotate();
 								}
 								return dir;
@@ -879,6 +888,59 @@ class Engine {
 							 .limit(winner.getGeneIndex())
 							 .collect(Collectors.toList());
 			}
+			final double mean = Arrays.stream(population).mapToDouble(Rover::getScore).sum()/POPULATION_SIZE;
+			variance = Arrays.stream(population).mapToDouble(r -> Math.pow(r.getScore()-mean, 2)).sum()/POPULATION_SIZE;
+			standardDev = Math.sqrt(variance);
+			
+			display.regenIn = turnsUntilRegen;
+			display.staleIn = turnsUntilStale;
+			
+			if(chosenStandardDev == -1) {
+				chosenStandardDev = standardDev;
+				turnsUntilStale = POPULATION_STALE_CUTOFF_TURNS;
+				turnsUntilRegen = POPULATION_REGEN_TURNS;
+			}
+			else {
+				if(Math.abs(chosenStandardDev-standardDev) > STAND_DEV_DIFF) {
+					if(turnsUntilRegen < POPULATION_REGEN_TURNS) {
+						System.err.println("Population may have recovered, cancelling regen");
+					}
+					turnsUntilStale = POPULATION_STALE_CUTOFF_TURNS;
+					turnsUntilRegen = POPULATION_REGEN_TURNS;
+					chosenStandardDev = standardDev;
+				}
+				else if(turnsUntilStale == 0) {
+					if(--turnsUntilRegen == 0) {
+						System.err.println("Regenerating population as it has shown to be useless");
+						if(GET_NEW_SEED) {
+							Rover.Gene.RANDOM.setSeed(Rover.Gene.SEED = System.currentTimeMillis());
+							System.err.println("New Seed: " + Rover.Gene.SEED);
+						}
+						if(++regens == REGENS_UNTIL_ROTATION) {
+							System.err.println("Rotating!");
+							this.rotate(1);
+							if(++rotation > 3) {
+								rotation = 0;
+							}
+							rotBack = 3-rotation;
+							regens = 0;
+						}
+						else {
+							System.err.printf("Regeneration %d/%d until rotation\n", regens, REGENS_UNTIL_ROTATION);
+						}
+						this.regenerate();
+						turnsUntilStale = POPULATION_STALE_CUTOFF_TURNS;
+						turnsUntilRegen = POPULATION_REGEN_TURNS;
+						chosenStandardDev = -1;
+						locked = false;
+						continue;
+					}
+				}
+				else if(--turnsUntilStale == 0) {
+					System.err.println("Warning: potentionally stale population detected. Will regenerate in " + turnsUntilRegen + " turns");
+				}
+			}
+			
 			if(next == null) {
 				next = new Rover[POPULATION_SIZE];
 			}
@@ -910,9 +972,14 @@ class Engine {
 		}
 	}
 	
-	private int rotate() {
+	private void regenerate() {
+		for(int i = 0; i < POPULATION_SIZE; i++) {
+			population[i] = new Rover(this, NUM_GENES);
+		}
+	}
+	private int rotate(int rotation) {
 		
-		if(!ROTATE || rotation == 0) return 0;
+		if(rotation == 0) return 0;
 		
 		double[][] rotated = new double[grid.length][grid[0].length];
 		
